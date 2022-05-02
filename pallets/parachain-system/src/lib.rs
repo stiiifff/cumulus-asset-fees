@@ -88,6 +88,10 @@ pub use relay_state_snapshot::{MessagingStateSnapshot, RelayChainStateProof};
 
 pub use pallet::*;
 
+/// Simple type used to identify messages for the purpose of reporting events. Secure if and only
+/// if the message content is unique.
+pub type MessageId = [u8; 32];
+
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
@@ -423,7 +427,7 @@ pub mod pallet {
 		/// \[ weight_used, result_mqc_head \]
 		DownwardMessagesProcessed(Weight, relay_chain::Hash),
 		/// An Upward message was sent to the parent.
-		UpwardMessageSent(Option<[u8;32]>),
+		UpwardMessageSent(Option<MessageId>),
 	}
 
 	#[pallet::error]
@@ -998,9 +1002,10 @@ impl<T: Config> Pallet<T> {
 				// Thus fall through here.
 			},
 		};
-		let hash = sp_io::hashing::blake2_256(&message);
-		Self::deposit_event(Event::UpwardMessageSent(Some(hash)));
+		// Id of the message
+		let id = sp_io::hashing::blake2_256(&message);
 		<PendingUpwardMessages<T>>::append(message);
+		Self::deposit_event(Event::UpwardMessageSent(Some(id)));
 		Ok(0)
 	}
 }

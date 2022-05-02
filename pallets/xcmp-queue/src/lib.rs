@@ -270,8 +270,6 @@ pub mod pallet {
 		BadVersion(Option<T::Hash>),
 		/// Bad XCM format used.
 		BadFormat(Option<T::Hash>),
-		/// An upward message was sent to the relay chain.
-		UpwardMessageSent(Option<T::Hash>),
 		/// An HRMP message was sent to a sibling parachain.
 		XcmpMessageSent(Option<T::Hash>),
 		/// An XCM exceeded the individual message weight budget.
