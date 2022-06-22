@@ -38,7 +38,7 @@ use sp_version::RuntimeVersion;
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
 	construct_runtime, match_types, parameter_types,
-	traits::{EitherOfDiverse, Everything, IsInVec, Randomness},
+	traits::{EitherOfDiverse, Everything, Get, IsInVec, Randomness},
 	weights::{
 		constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND},
 		ConstantMultiplier, DispatchClass, IdentityFee, Weight,
@@ -49,6 +49,8 @@ use frame_system::{
 	limits::{BlockLength, BlockWeights},
 	EnsureRoot,
 };
+use sp_std::marker::PhantomData;
+
 pub use pallet_balances::Call as BalancesCall;
 pub use pallet_timestamp::Call as TimestampCall;
 pub use sp_consensus_aura::sr25519::AuthorityId as AuraId;
@@ -57,14 +59,14 @@ pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 
 use parachains_common::{
-	impls::{AssetsFrom, NonZeroIssuance},
+	impls::NonZeroIssuance,
 	AssetId,
 };
 use xcm_builder::{
 	AllowKnownQueryResponses, AllowSubscriptionsFrom, AsPrefixedGeneralIndex,
 	ConvertedConcreteAssetId, FungiblesAdapter,
 };
-use xcm_executor::traits::JustTry;
+use xcm_executor::traits::{FilterAssetLocation, JustTry};
 
 // XCM imports
 use pallet_xcm::{EnsureXcm, IsMajorityOfBody, XcmPassthrough};
@@ -391,7 +393,32 @@ parameter_types! {
 		MultiLocation::new(1, X2(Parachain(1000), PalletInstance(50)));
 }
 
-pub type Reserves = (NativeAsset, AssetsFrom<StatemintLocation>);
+fn matches_prefix(prefix: &MultiLocation, loc: &MultiLocation) -> bool {
+	prefix.parent_count() == loc.parent_count() &&
+		loc.len() >= prefix.len() &&
+		prefix
+			.interior()
+			.iter()
+			.zip(loc.interior().iter())
+			.all(|(prefix_junction, junction)| prefix_junction == junction)
+}
+
+pub struct ReserveAssetsFrom<T>(PhantomData<T>);
+impl<T: Get<MultiLocation>> FilterAssetLocation for ReserveAssetsFrom<T> {
+	fn filter_asset_location(asset: &MultiAsset, origin: &MultiLocation) -> bool {
+		let prefix = T::get();
+		log::trace!(target: "xcm::AssetsFrom", "prefix: {:?}, origin: {:?}", prefix, origin);
+		&prefix == origin &&
+			match asset {
+				MultiAsset { id: xcm::latest::AssetId::Concrete(asset_loc), fun: Fungible(_a) } =>
+					matches_prefix(&prefix, asset_loc),
+				_ => false,
+			}
+	}
+}
+//--
+
+pub type Reserves = (NativeAsset, ReserveAssetsFrom<StatemintLocation>);
 
 pub struct XcmConfig;
 impl Config for XcmConfig {
@@ -432,7 +459,7 @@ impl pallet_xcm::Config for Runtime {
 	type XcmExecuteFilter = Everything;
 	type XcmExecutor = XcmExecutor<XcmConfig>;
 	type XcmTeleportFilter = Everything;
-	type XcmReserveTransferFilter = frame_support::traits::Nothing;
+	type XcmReserveTransferFilter = Everything;
 	type Weigher = FixedWeightBounds<UnitWeightCost, Call, MaxInstructions>;
 	type LocationInverter = LocationInverter<Ancestry>;
 	type Origin = Origin;
